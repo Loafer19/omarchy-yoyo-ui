@@ -17,9 +17,10 @@ from that). Every colour, size and font comes from `qs.Commons`
 | --- | --- |
 | `Theme` (singleton) | Colour roles (`fg`, `dim`, `faint`, `accent`, `urgent`, `background`, `line`, `hoverFill`, `normalFill`, `selectedFill`, `tint(c, a)`), metrics (`edge`, `gap`, `rowHeight`, `dataRowHeight`, `smallRowHeight`) and type sizes (`caption`, `body`, `title`, `heading`). Writable: `foreground`, `fontFamily`. |
 | `ChipRow` | Tab / filter chips. `chips: [{ key, label }]`, `selectedKey`, `compact`, `cursorIndex` + `cursorActive` (keyboard cursor), optional `foreground` / `fontFamily`. Signals `selected(key)`, `chipHovered(index)`. |
-| `HeaderChip` | Small action chip. `text`, `tooltipText`, `on`, `enabled`, `danger` (urgent fill when on), optional `foreground` / `fontFamily`; `hovered`. Signal `clicked()`. |
-| `ActionRow` | `CursorSurface` row: `title`, `subtitle` and a chip. `confirm: true` makes it two-step: first `activate()` arms (`confirmText`, urgent, `confirmTooltip`) for `armMs` (3000), the second fires `triggered()`. Afterwards the chip shows `doneText` for `doneMs` (1500) if `doneText` is set. Leaving the row (`hasCursor` false) disarms. Signal `rowHovered()`. |
-| `EmptyState` | Centred "nothing here yet": `title` (dim, body) + optional `subtitle` (faint, caption). |
+| `HeaderChip` | Small action chip. `text`, `tooltipText`, `on`, `danger` (urgent fill when lit), optional `foreground` / `fontFamily`; `hovered`. Disable it with the ordinary `Item.enabled` (opacity 0.4, no hover/tooltip). Signals `clicked()` (every click) and `triggered()` (the action: every click, or the confirming one in confirm mode). **Confirm mode** (`confirm: true`): first `activate()` / click arms it (label `confirmText`, default `"Confirm?"`, urgent fill, tooltip `confirmTooltip` if set), the second fires `triggered()`; `armMs` (4000) or `disarm()` cancel; disabling the chip disarms. Pass `controller` + `confirmKey` to share a `ConfirmController`. Read-only `armed`. |
+| `ConfirmController` | `QtObject` for two-step actions: `armedKey`, `armed`, `timeout` (4000 ms), `isArmed(key)`, `arm(key)`, `disarm()`, `confirm(key)` (returns `true` if `key` was already armed, and disarms; otherwise arms it and returns `false`). Keys are your own stable strings (e.g. `"packages:" + name`), so the armed row survives ListView reloads. One per panel; call `disarm()` on Esc and cursor moves. |
+| `ActionRow` | `CursorSurface` row: `title`, `subtitle`, optional `badge` and one action (`actionLabel`). `actionStyle`: `"chip"` (default, a `HeaderChip` lit while the row has the cursor) or `"button"` (fixed `actionWidth`, default `Style.space(72)`; urgent hover when `danger`; row tinted urgent while armed). `actionVisible`, `actionEnabled` (button: opacity 0.45). `badge` + `badgeVariant` `"normal"` / `"warn"` / `"danger"`. `confirm: true` makes it two-step through a `ConfirmController` (own one with `armMs` 3000, or a shared `controller` + `confirmKey`); while armed the action shows `confirmText` ("Confirm") and the subtitle `armedText` in urgent. `armed` is writable if you run the confirm yourself. `doneText` / `doneMs` (1500) after triggering. `disarmOnLeave` (true): losing the cursor disarms. `activateOnClick` (true): set false to only emit `actionClicked()` and route the click yourself. Signals `rowHovered()`, `actionClicked()`, `triggered()`; method `activate()` (call it on Enter). |
+| `EmptyState` | Centred "nothing here yet": `title` (dim, body) + optional `subtitle` (faint, caption). Padding: `topPadding` / `bottomPadding` (`Style.space(24)`) and `spacing` (`Style.space(4)`) are plain `Column` properties, set them to 0 for a tight block. `fitContent: true` sizes each line to its text and centres it with anchors, so it lands on the same whole pixel as `Text { anchors.centerIn: parent }` (the default full-width `AlignHCenter` text can sit half a pixel off). |
 | `KeyHints` | Footer hints, `hints: [["Tab", "tabs"], ["j k", "rows"]]`. |
 | `StatusFooter` | Footer bar (height `Style.space(18)`): `hints`, replaced by `statusText` while set (`statusKind`: `""`, `"progress"`, `"done"` = accent, `"error"` = urgent), optional `rightText`. `flash(text, kind)` sets a status that clears itself (errors after `errorMs` 6000, others after `doneMs` 2500, `"progress"` stays); `clear()`. |
 
@@ -34,7 +35,7 @@ Copy [`tools/sync-ui.sh`](tools/sync-ui.sh) into the plugin as
 `tools/sync-ui.sh` (it works on its parent directory, the plugin root), then:
 
 ```sh
-tools/sync-ui.sh v0.1.0      # or any tag / commit
+tools/sync-ui.sh v0.2.0      # or any tag / commit
 git add tools/sync-ui.sh vendor/yoyo-ui
 ```
 
@@ -55,7 +56,8 @@ tools/sync-ui.sh --check            # fails if any vendored file was edited, add
 tools/sync-ui.sh --check-upstream   # also re-fetches the pinned commit and compares (network)
 ```
 
-Add `tools/sync-ui.sh --check` to the plugin's test script (`tests/unit.sh`).
+Add `tools/sync-ui.sh --check` to your plugin's test script (whatever it
+runs in CI or before a release, e.g. `tests/unit.sh` or `tests/run.sh`).
 Fixes go here first, get a tag, then get synced; never edit `vendor/yoyo-ui/`.
 
 ### 3. Import it
@@ -74,12 +76,60 @@ import "../vendor/yoyo-ui"
 import "../vendor/yoyo-ui" as Yoyo   // Yoyo.Theme.fg, Yoyo.ChipRow { … }
 ```
 
-Then bind the theme to the bar once, in `Panel.qml`:
+Then bind the theme to the bar once, in `Panel.qml` (`contentForeground` /
+`contentFontFamily` are the Panel's own properties; the library side is
+`Theme.foreground` / `Theme.fontFamily`):
 
 ```qml
 Binding { target: Theme; property: "foreground"; value: root.contentForeground }
 Binding { target: Theme; property: "fontFamily"; value: root.contentFontFamily }
 ```
+
+### Two-step confirm
+
+One controller per panel, keyed by something stable, so Enter and clicks share
+it and the armed row survives a model reload:
+
+```qml
+ConfirmController { id: confirmCtl; timeout: 4000 }
+property alias armedKey: confirmCtl.armedKey        // e.g. for key hints
+
+// Enter on the cursor row:
+function request(item) { if (confirmCtl.confirm("pkg:" + item.name)) remove(item) }
+// Esc / cursor moves / tab change: confirmCtl.disarm()
+
+delegate: ActionRow {
+  actionStyle: "button"
+  controller: confirmCtl
+  confirmKey: "pkg:" + modelData.name
+  activateOnClick: false               // clicks go through request() too
+  onActionClicked: root.request(modelData)
+  actionLabel: "Remove"; danger: true
+  armedText: "pacman -Rns " + modelData.name + " — again to confirm"
+}
+
+// or a self-contained chip:
+HeaderChip {
+  text: "Empty trash"; danger: true; confirm: true
+  enabled: trash.length > 0
+  onTriggered: store.emptyTrash()
+}
+```
+
+### Multiple monitors
+
+`Theme` is one singleton per vendored copy, i.e. per plugin, not per panel
+instance. If the same plugin shows a panel on two monitors whose bars use
+different colours, the last `Binding` to run wins for both. v0.2 does not have
+per-instance theming (it would mean passing a theme object to every
+component). If you need it, make the binding follow the open panel:
+
+```qml
+Binding { target: Theme; property: "foreground"; value: root.contentForeground; when: root.visible }
+```
+
+When the panel closes, the Binding restores the previous value. With two
+panels open at once, the one opened last wins.
 
 ### Import gotchas (verified with quickshell, offscreen, see `tests/run.sh`)
 
@@ -126,7 +176,11 @@ Runs qmllint on `ui/`, round-trips `tools/sync-ui.sh` against a throwaway repo
 caught, bad ref fails), then renders `tests/fixture/` (a fake plugin with the
 library vendored by the script) offscreen with quickshell, twice (normal and
 with `Theme.foreground` retargeted), checking for QML warnings and that every
-import site shares one `Theme`. Needs `qs` and `/usr/share/omarchy/shell`.
+import site shares one `Theme`, and runs `tests/fixture/logic.qml`: behaviour
+checks for `ConfirmController` (arm / confirm / disarm / timeout), `ActionRow`
+(own and shared controller, button style, disabled action), `HeaderChip`
+confirm mode and `EmptyState { fitContent }` pixel position.
+`tests/run.sh docs` re-renders `docs/preview.png`. Needs `qs` and `/usr/share/omarchy/shell`.
 
 ## License
 

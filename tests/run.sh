@@ -62,4 +62,12 @@ for tint in 0 1; do
     || bad "Theme instance mismatch ($name): $probe"
 done
 
+# 4. behaviour tests (tests/fixture/logic.qml)
+log=$(QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software timeout 30 qs -p "$T/fx/logic.qml" 2>&1 || true)
+grep -oE '(PASS|FAIL) .*' <<<"$log" | sed 's/^PASS/ok  /; s/^FAIL/FAIL/' || true
+grep -q 'FAIL ' <<<"$log" && fail=1
+if ! grep -qE 'logic done [0-9]+ 0$' <<<"$log"; then bad "logic.qml did not finish cleanly"; echo "$log" | grep -E 'WARN|ERROR' | tail -20; fi
+lw=$(grep -E 'WARN|ERROR' <<<"$log" | grep -vE 'WAYLAND_DISPLAY|QT_QPA_PLATFORM|actually running wayland|window masks|--- WARNING' || true)
+[ -z "$lw" ] && ok "no QML warnings (logic)" || { bad "QML warnings (logic)"; echo "$lw"; }
+
 [ $fail = 0 ] && echo "all tests passed" || { echo "some tests FAILED"; exit 1; }

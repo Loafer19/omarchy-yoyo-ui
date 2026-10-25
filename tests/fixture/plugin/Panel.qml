@@ -19,6 +19,9 @@ Rectangle {
   Binding { target: Theme; property: "foreground"; value: root.expected }
   Binding { target: Theme; property: "fontFamily"; value: Style.font.family }
 
+  ConfirmController { id: confirmCtl }
+  Component.onCompleted: confirmCtl.arm("pkg:ruby")
+
   color: Theme.background
   height: col.implicitHeight + 2 * Theme.edge
 
@@ -45,9 +48,22 @@ Rectangle {
       HeaderChip { text: "Remove"; on: true; danger: true }
       HeaderChip { text: "Disabled"; enabled: false }
     }
-    ActionRow { width: parent.width; title: "Copy diagnostics"; subtitle: "Plain-text report to the clipboard"; chip: "Copy" }
-    ActionRow { width: parent.width; title: "Clear history"; subtitle: "Two-step confirm (armed)"; chip: "Clear"; confirm: true; armed: true; hasCursor: true }
+    ActionRow { width: parent.width; title: "Copy diagnostics"; subtitle: "Plain-text report to the clipboard"; actionLabel: "Copy" }
+    ActionRow { width: parent.width; title: "Clear history"; subtitle: "Two-step confirm (armed)"; actionLabel: "Clear"; confirm: true; armed: true; hasCursor: true }
+    // Button style, sharing one ConfirmController (armed row 2 by key)
+    ActionRow { width: parent.width; actionStyle: "button"; controller: confirmCtl; confirmKey: "pkg:cmake"; confirm: true; danger: true
+      title: "cmake"; subtitle: "112 MiB · installed 2026-03-02"; actionLabel: "Remove"; badge: "protected" }
+    ActionRow { width: parent.width; actionStyle: "button"; controller: confirmCtl; confirmKey: "pkg:ruby"; confirm: true; danger: true
+      title: "ruby"; subtitle: "48 MiB"; actionLabel: "Remove"; badge: "irreversible"; badgeVariant: "warn"; armedText: "pacman -Rns ruby — again to confirm" }
+    ActionRow { width: parent.width; actionStyle: "button"; title: "keyring"; subtitle: "disabled · ~/.config/autostart"; actionLabel: "Enable"
+      badge: "system"; badgeVariant: "danger"; actionEnabled: false }
+    Row {
+      x: Theme.edge; spacing: Style.space(6)
+      HeaderChip { text: "Empty trash"; confirm: true; danger: true; controller: confirmCtl; confirmKey: "trash" }
+      HeaderChip { text: "Armed elsewhere"; confirm: true; controller: confirmCtl; confirmKey: "pkg:ruby" }
+    }
     EmptyState { width: parent.width; title: "Nothing here yet"; subtitle: "Rows show up when there is something to show" }
+    EmptyState { width: parent.width; fitContent: true; topPadding: 0; bottomPadding: Style.space(8); title: "fitContent: centred like anchors.centerIn" }
     Local.Probe { id: probe; x: Theme.edge }
     Local.QualifiedProbe { id: qprobe; x: Theme.edge }
     KeyHints { x: Theme.edge; hints: [["Tab", "tabs"], ["j k", "rows"], ["Enter", "open"]] }
