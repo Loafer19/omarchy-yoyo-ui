@@ -1,9 +1,11 @@
 import QtQuick
 import Quickshell
+import qs.Commons
 import "plugin/vendor/yoyo-ui"
 
-// Behaviour tests for ConfirmController, ActionRow, HeaderChip and
-// EmptyState.fitContent. Prints PASS/FAIL lines, then "logic done N M".
+// Behaviour tests for ConfirmController, ActionRow, HeaderChip,
+// EmptyState.fitContent, Theme tokens, StatusFooter.separator, RowHover and
+// the text styles. Prints PASS/FAIL lines, then "logic done N M".
 ShellRoot {
   id: shell
   property int pass: 0
@@ -18,6 +20,9 @@ ShellRoot {
     }
     return null
   }
+
+  // Colours as #aarrggbb strings: colour properties round, so compare what renders.
+  function sameColor(a, b) { return String(Qt.color(a)) === String(Qt.color(b)) && Qt.color(a).a.toFixed(2) === Qt.color(b).a.toFixed(2) }
 
   function check(name, cond) {
     if (cond) { pass++; console.log("PASS " + name) } else { fail++; console.log("FAIL " + name) }
@@ -50,6 +55,16 @@ ShellRoot {
       Item { id: boxA; width: 333; height: 41; Text { id: refText; anchors.centerIn: parent; text: "Trash is empty"; color: Theme.dim; font.family: Theme.fontFamily; font.pixelSize: Theme.body } }
       Item { id: boxB; width: 333; height: 41
         EmptyState { id: fit; anchors.centerIn: parent; width: parent.width; topPadding: 0; bottomPadding: 0; fitContent: true; title: "Trash is empty" } }
+      StatusFooter { id: plainFooter; width: 300 }
+      StatusFooter { id: ruledFooter; width: 300; separator: true }
+      StatusFooter { id: gapFooter; width: 300; separator: true; separatorGap: 4; separatorStrength: 0.2 }
+      Item { width: 200; height: 30
+        RowHover { id: hoverPlain; rowIndex: 3
+          property int seen: -1; onHovered: (i) => seen = i } }
+      Item { width: 200; height: 30; RowHover { id: hoverClick; clickable: true } }
+      Item { width: 200; height: 30; RowHover { id: hoverArrow; clickable: true; pointer: false } }
+      TitleText { id: titleText; text: "t" }
+      CaptionText { id: captionText; text: "c" }
     }
   }
 
@@ -114,6 +129,34 @@ ShellRoot {
     var a0 = boxA.mapToItem(null, 0, 0), b0 = boxB.mapToItem(null, 0, 0)
     check("fitContent: same x/y as Text { anchors.centerIn } (" + (a.x - a0.x) + "," + (a.y - a0.y) + " vs " + (b.x - b0.x) + "," + (b.y - b0.y) + ")",
       a.x - a0.x === b.x - b0.x && a.y - a0.y === b.y - b0.y)
+
+    // Theme tokens (typed copies of Style's grouped tokens)
+    check("Theme.hairline is Style.spacing.hairline", Theme.hairline === Style.spacing.hairline && Theme.hairline >= 1)
+    check("Theme.icon / iconSmall follow Style.font", Theme.icon === Style.font.icon && Theme.iconSmall === Style.font.iconSmall)
+    check("Theme.buttonFill is tint(fg, 0.06)", shell.sameColor(Theme.buttonFill, Theme.tint(Theme.fg, 0.06)))
+    check("Theme.separator is tint(fg, 0.08)", shell.sameColor(Theme.separator, Theme.tint(Theme.fg, 0.08)))
+    check("panel widths 480 / 520 / 560", Theme.panelNarrow === Style.space(480) && Theme.panelWidth === Style.space(520) && Theme.panelWide === Style.space(560))
+
+    // StatusFooter.separator: a rule above the box, the box itself unchanged
+    var rule = function(f) { for (var i = 0; i < f.children.length; i++) if (f.children[i].height === Theme.hairline && f.children[i].color !== undefined && f.children[i].width === f.width && !(f.children[i] instanceof Text)) return f.children[i]; return null }
+    var r0 = rule(plainFooter), rr = rule(ruledFooter), rg = rule(gapFooter)
+    check("separator off by default", r0 !== null && !r0.visible)
+    check("separator: Theme.edge above, hairline, footer width", rr && rr.visible && rr.y === -(Theme.edge + Theme.hairline) && rr.width === 300)
+    check("separator colour = Theme.separator", rr && shell.sameColor(rr.color, Theme.separator))
+    check("separatorGap / separatorStrength", rg && rg.y === -(4 + Theme.hairline) && shell.sameColor(rg.color, Theme.tint(Theme.fg, 0.2)))
+    check("separator leaves the footer height alone", ruledFooter.height === plainFooter.height)
+
+    // RowHover
+    check("RowHover fills its row", hoverPlain.width === 200 && hoverPlain.height === 30)
+    check("RowHover: hover only by default", hoverPlain.acceptedButtons === Qt.NoButton && hoverPlain.cursorShape === Qt.ArrowCursor && hoverPlain.hoverEnabled)
+    check("RowHover clickable: left button + pointing hand", hoverClick.acceptedButtons === Qt.LeftButton && hoverClick.cursorShape === Qt.PointingHandCursor)
+    check("RowHover pointer: false keeps the arrow", hoverArrow.acceptedButtons === Qt.LeftButton && hoverArrow.cursorShape === Qt.ArrowCursor)
+    hoverPlain.hovered(hoverPlain.rowIndex)
+    check("RowHover hovered(rowIndex)", hoverPlain.seen === 3)
+
+    // Text styles = ActionRow's title / subtitle look
+    check("TitleText: fg, body, bold", shell.sameColor(titleText.color, Theme.fg) && titleText.font.pixelSize === Theme.body && titleText.font.bold && titleText.elide === Text.ElideRight)
+    check("CaptionText: dim, caption", shell.sameColor(captionText.color, Theme.dim) && captionText.font.pixelSize === Theme.caption && !captionText.font.bold)
 
     // timeouts
     fast.arm("t")

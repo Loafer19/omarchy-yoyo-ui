@@ -67,7 +67,26 @@ Rectangle {
     Local.Probe { id: probe; x: Theme.edge }
     Local.QualifiedProbe { id: qprobe; x: Theme.edge }
     KeyHints { x: Theme.edge; hints: [["Tab", "tabs"], ["j k", "rows"], ["Enter", "open"]] }
-    StatusFooter { width: parent.width; hints: [["Tab", "tabs"]]; rightText: "≈ 1.2 GiB reclaimable" }
+    Item {
+      width: parent.width; height: Theme.smallRowHeight
+      Rectangle { anchors.fill: parent; color: hover.containsMouse ? Theme.hoverFill : "transparent" }
+      Row {
+        x: Theme.edge; anchors.verticalCenter: parent.verticalCenter; spacing: Theme.gap
+        Rectangle {
+          width: Theme.icon + Theme.edge; height: width; radius: Style.cornerRadius
+          color: Theme.buttonFill; border.width: Theme.hairline; border.color: Theme.line
+          Text { anchors.centerIn: parent; text: "×"; color: Theme.dim; font.family: Theme.fontFamily; font.pixelSize: Theme.icon }
+        }
+        Column {
+          anchors.verticalCenter: parent.verticalCenter
+          TitleText { text: "TitleText + CaptionText" }
+          CaptionText { text: "RowHover row · Theme.icon in a Theme.buttonFill box" }
+        }
+      }
+      RowHover { id: hover; clickable: true }
+    }
+    Item { width: parent.width; height: Theme.edge }
+    StatusFooter { width: parent.width; separator: true; hints: [["Tab", "tabs"]]; rightText: "separator: true · ≈ 1.2 GiB reclaimable" }
     StatusFooter { width: parent.width; statusText: "Removing 3 packages…"; statusKind: "progress"; rightText: "≈ 1.2 GiB" }
     StatusFooter { width: parent.width; statusText: "pacman failed: exit 1"; statusKind: "error" }
   }
